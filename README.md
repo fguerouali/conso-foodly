@@ -21,7 +21,7 @@ Le contrôle du fichier d’octobre :
 npm run check
 ```
 
-Résultat attendu : viande 395,11 kg, poulet 990,05 kg, tender 50,16 kg.
+Résultat attendu : viande 274,20 kg, poulet 1 063,01 kg, tender 51,04 kg.
 
 ## Render
 
@@ -29,6 +29,4 @@ Déploiement statique. Le fichier `render.yaml` décrit le service : build `npm 
 
 ## Barème
 
-Plat gourmand shawarma viande - kabssa et sa version avec mhalabia comptent 120 g de viande cuite, pas de poulet.
-
-Les BOX shawarma, le riz, les frites, le houmous, les mezzés et les desserts ne consomment ni viande, ni poulet, ni tender : ils sont exclus des totaux.
+Seuls les 36 produits du barème de référence sont comptés. Un produit absent de ce tableau ne consomme ni viande, ni poulet, ni tender.

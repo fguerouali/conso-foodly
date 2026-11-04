@@ -6,7 +6,7 @@ const filePath = process.argv[2]
 
 const buffer = await readFile(filePath);
 const report = parseWorkbook(buffer, 'octobre.xlsx');
-const expected = { pouletCruG: 990054, viandeCruG: 395108, tenderCruG: 50160 };
+const expected = { pouletCruG: 1063010, viandeCruG: 274204, tenderCruG: 51040 };
 let ok = true;
 
 for (const key of Object.keys(expected)) {
@@ -17,19 +17,29 @@ for (const key of Object.keys(expected)) {
 }
 
 const notes = report.lines.filter((line) => line.note).map((line) => line.nom);
-if (notes.length !== 1 || notes[0] !== 'Menu Shawarma poulet Super') {
+if (notes.length !== 0) {
   console.error('notes', notes);
   ok = false;
 }
-for (const name of [
-  'Plat gourmand shawarma viande - kabssa',
-  'Plat gourmand shawarma viande - kabssa +Mhalabia',
-]) {
-  const line = report.lines.find((item) => item.nom === name);
-  if (!line || line.pouletCuit !== 0 || line.viandeCuite !== 120) {
-    console.error('viande kabssa', name, line);
-    ok = false;
-  }
+const pouletSuper = report.lines.find((line) => line.nom === 'Menu Shawarma poulet Super');
+if (!pouletSuper || pouletSuper.pouletCuit !== 120 || pouletSuper.viandeCuite !== 0) {
+  console.error('poulet super', pouletSuper);
+  ok = false;
+}
+const kabssa = report.lines.find((line) => line.nom === 'Plat gourmand shawarma viande - kabssa');
+if (!kabssa || kabssa.pouletCuit !== 0 || kabssa.viandeCuite !== 120) {
+  console.error('viande kabssa', kabssa);
+  ok = false;
+}
+const pouletMhalabia = report.lines.find((line) => line.nom === 'menu shawarma poulet + mhalabia');
+if (!pouletMhalabia || pouletMhalabia.pouletCuit !== 60 || pouletMhalabia.viandeCuite !== 0) {
+  console.error('poulet mhalabia', pouletMhalabia);
+  ok = false;
+}
+const tendersFrites = report.lines.find((line) => line.nom === 'Tenders Frites');
+if (!tendersFrites || tendersFrites.tender !== 120) {
+  console.error('tenders frites', tendersFrites);
+  ok = false;
 }
 const excluded = new Set([
   'box shawarma viande',

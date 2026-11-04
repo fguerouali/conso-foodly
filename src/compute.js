@@ -69,6 +69,66 @@ function findHeader(rows) {
   return null;
 }
 
+export function productLabel(designation) {
+  const text = String(designation ?? '').trim();
+  const cut = text.indexOf(':');
+  return (cut >= 0 ? text.slice(cut + 1) : text).trim();
+}
+
+export function buildReport(entries, meta = {}) {
+  const qtyByName = new Map();
+  for (const entry of entries) {
+    const nom = String(entry?.nom ?? '').trim();
+    if (!nom || normalizeKey(nom).startsWith('total')) continue;
+    const qty = toQty(entry.qty);
+    if (!Number.isFinite(qty) || qty === 0) continue;
+    const key = normalizeKey(nom);
+    const current = qtyByName.get(key);
+    if (current) current.qty += qty;
+    else qtyByName.set(key, { nom, qty });
+  }
+
+  const lines = [];
+  const ignored = [];
+  qtyByName.forEach((sale, key) => {
+    const recipe = recipeByName.get(key);
+    if (!recipe || (!recipe.poulet && !recipe.viande && !recipe.tender)) {
+      ignored.push(sale);
+      return;
+    }
+    const pouletCruG = rawGrams(sale.qty, recipe.poulet, COEF_POULET);
+    const viandeCruG = rawGrams(sale.qty, recipe.viande, COEF_VIANDE);
+    const tenderCruG = rawGrams(sale.qty, recipe.tender, 1);
+    lines.push({
+      nom: recipe.nom,
+      qty: sale.qty,
+      pouletCuit: recipe.poulet,
+      viandeCuite: recipe.viande,
+      tender: recipe.tender,
+      pouletCruG,
+      viandeCruG,
+      tenderCruG,
+      note: conflictNote(key, recipe) || '',
+    });
+  });
+
+  lines.sort(
+    (a, b) => b.pouletCruG + b.viandeCruG + b.tenderCruG - (a.pouletCruG + a.viandeCruG + a.tenderCruG),
+  );
+  ignored.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
+  const sum = (key) => lines.reduce((total, line) => total + line[key], 0);
+
+  return {
+    ...meta,
+    pouletCruG: sum('pouletCruG'),
+    viandeCruG: sum('viandeCruG'),
+    tenderCruG: sum('tenderCruG'),
+    ventesCount: qtyByName.size,
+    lines,
+    ignored,
+  };
+}
+
 export function parseWorkbook(data, fileName = '') {
   const workbook = XLSX.read(data, { type: 'array', raw: true });
   const sheetName = workbook.SheetNames.find((name) => normalizeKey(name) === 'ventes par produit');
@@ -99,68 +159,23 @@ export function parseWorkbook(data, fileName = '') {
   );
   const caisseMatch = headerLine.match(/Caisse\s+(\d+)/i);
 
-  const qtyByName = new Map();
+  const entries = [];
   for (let index = header.headerIndex + 1; index < rows.length; index += 1) {
     const row = rows[index] || [];
     const rawName = row[header.produit];
     if (rawName == null || typeof rawName === 'number') continue;
-    const nom = String(rawName).trim();
-    if (!nom || normalizeKey(nom).startsWith('total')) continue;
-    const qty = toQty(row[header.quantite]);
-    if (!Number.isFinite(qty) || qty === 0) continue;
-    const key = normalizeKey(nom);
-    const current = qtyByName.get(key);
-    if (current) current.qty += qty;
-    else qtyByName.set(key, { nom, qty });
+    entries.push({ nom: rawName, qty: row[header.quantite] });
   }
 
-  if (qtyByName.size === 0) {
-    throw new Error('Aucune quantité vendue dans VENTES_PAR_PRODUIT.');
-  }
-
-  const lines = [];
-  const ignored = [];
-
-  qtyByName.forEach((sale, key) => {
-    const recipe = recipeByName.get(key);
-    if (!recipe || (!recipe.poulet && !recipe.viande && !recipe.tender)) {
-      ignored.push(sale);
-      return;
-    }
-    const pouletCruG = rawGrams(sale.qty, recipe.poulet, COEF_POULET);
-    const viandeCruG = rawGrams(sale.qty, recipe.viande, COEF_VIANDE);
-    const tenderCruG = rawGrams(sale.qty, recipe.tender, 1);
-    lines.push({
-      nom: recipe.nom,
-      qty: sale.qty,
-      pouletCuit: recipe.poulet,
-      viandeCuite: recipe.viande,
-      tender: recipe.tender,
-      pouletCruG,
-      viandeCruG,
-      tenderCruG,
-      note: conflictNote(key, recipe) || '',
-    });
-  });
-
-  lines.sort(
-    (a, b) => b.pouletCruG + b.viandeCruG + b.tenderCruG - (a.pouletCruG + a.viandeCruG + a.tenderCruG),
-  );
-  ignored.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
-
-  const sum = (key) => lines.reduce((total, line) => total + line[key], 0);
-
-  return {
+  const report = buildReport(entries, {
     fileName,
     headerLine,
     caisse: caisseMatch ? caisseMatch[1] : '',
     periodStart: period ? `${period[3]}-${period[2]}-${period[1]}` : '',
     periodEnd: period ? `${period[6]}-${period[5]}-${period[4]}` : '',
-    pouletCruG: sum('pouletCruG'),
-    viandeCruG: sum('viandeCruG'),
-    tenderCruG: sum('tenderCruG'),
-    ventesCount: qtyByName.size,
-    lines,
-    ignored,
-  };
+  });
+  if (report.ventesCount === 0) {
+    throw new Error('Aucune quantité vendue dans VENTES_PAR_PRODUIT.');
+  }
+  return report;
 }

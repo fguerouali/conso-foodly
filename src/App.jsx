@@ -12,6 +12,10 @@ import {
 export default function App() {
   const fileRef = useRef(null);
   const [report, setReport] = useState(null);
+  const [network, setNetwork] = useState(null);
+  const [scope, setScope] = useState('all');
+  const [month, setMonth] = useState(() => monthInputFromDate(new Date().toISOString()));
+  const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [parsingError, setParsingError] = useState('');
   const [filter, setFilter] = useState('all');
@@ -27,6 +31,7 @@ export default function App() {
     try {
       const buffer = await file.arrayBuffer();
       const next = parseWorkbook(buffer, file.name);
+      setNetwork(null);
       setReport(next);
       setParsingError('');
       setFilter('all');
@@ -43,7 +48,66 @@ export default function App() {
     handleFile(file);
   }
 
-  const title = labelFromMonthInput(monthInputFromDate(report?.periodStart)) || 'Consommation du mois';
+  async function loadCaisse(event) {
+    event.preventDefault();
+    setLoading(true);
+    setParsingError('');
+    try {
+      const response = await fetch('/api/conso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Lecture La Caisse impossible.');
+      setReport(null);
+      setNetwork(body);
+      setScope('all');
+      setFilter('all');
+      setQuery('');
+      setSort({ key: 'total', dir: 'desc' });
+    } catch (error) {
+      setParsingError(error.message || 'Lecture La Caisse impossible.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const scopedStores = useMemo(() => {
+    if (!network) return null;
+    if (scope === 'all') return network.stores;
+    if (String(scope).startsWith('ville:')) {
+      const ville = String(scope).slice(6);
+      return network.stores.filter((store) => store.ville === ville);
+    }
+    return network.stores.filter((store) => store.id === scope);
+  }, [network, scope]);
+
+  const shown = useMemo(() => {
+    if (report) return report;
+    if (!network || !scopedStores) return null;
+    const totals = sumStores(scopedStores);
+    const label = scope === 'all'
+      ? 'Réseau Foodly'
+      : String(scope).startsWith('ville:')
+        ? String(scope).slice(6)
+        : (scopedStores[0]?.nom || '');
+    return {
+      ...totals,
+      fileName: '',
+      headerLine: `La Caisse · ${label}`,
+      periodStart: network.periodStart,
+    };
+  }, [report, network, scopedStores, scope]);
+
+  const title = labelFromMonthInput(monthInputFromDate(shown?.periodStart)) || 'Consommation du mois';
+
+  function reset() {
+    setReport(null);
+    setNetwork(null);
+    setScope('all');
+    setParsingError('');
+  }
 
   return (
     <div className="page">
@@ -54,27 +118,46 @@ export default function App() {
             <p className="brand-kicker">Foodly Shawarma</p>
             <p className="brand-title">Consommation crue</p>
           </div>
-          {report && (
+          {shown && (
             <div className="mini" aria-hidden="true">
-              <span><b>{formatKg(report.viandeCruG)}</b> kg viande</span>
-              <span><b>{formatKg(report.pouletCruG)}</b> kg poulet</span>
-              <span><b>{formatKg(report.tenderCruG)}</b> kg tender</span>
+              <span><b>{formatKg(shown.viandeCruG)}</b> kg viande</span>
+              <span><b>{formatKg(shown.pouletCruG)}</b> kg poulet</span>
+              <span><b>{formatKg(shown.tenderCruG)}</b> kg tender</span>
             </div>
           )}
         </header>
 
         <main>
-          {!report && (
+          {!shown && (
             <section className="hero">
               <h1>Consommation du mois</h1>
               <p className="lede">
-                Déposez l’export caisse. Les quantités vendues deviennent le poids cru
-                de viande, de poulet et de tender.
+                Chargez les ventes La Caisse, ventilées par ville et par point de vente,
+                ou déposez un export Excel.
               </p>
             </section>
           )}
 
-          {!report && (
+          {!shown && (
+            <form className="caisse-card" onSubmit={loadCaisse}>
+              <p className="drop-title">Depuis La Caisse</p>
+              <p className="drop-sub">Points de vente Foodly, par ville.</p>
+              <label className="month-field">
+                Mois
+                <input
+                  type="month"
+                  value={month}
+                  onChange={(event) => setMonth(event.target.value)}
+                  required
+                />
+              </label>
+              <button className="btn-primary" type="submit" disabled={loading || !month}>
+                {loading ? 'Chargement…' : 'BOTONA'}
+              </button>
+            </form>
+          )}
+
+          {!shown && (
             <DropZone
               dragOver={dragOver}
               onBrowse={() => fileRef.current?.click()}
@@ -93,11 +176,15 @@ export default function App() {
 
           {parsingError && <p className="error" role="alert">{parsingError}</p>}
 
-          {report && (
+          {shown && (
             <Results
-              data={report}
+              data={shown}
               title={title}
-              onReplace={() => fileRef.current?.click()}
+              stores={network?.stores}
+              scope={scope}
+              onScope={setScope}
+              replaceLabel={network ? 'Autre source' : 'Autre fichier'}
+              onReplace={network ? reset : () => fileRef.current?.click()}
               filter={filter}
               onFilter={setFilter}
               query={query}
@@ -156,7 +243,9 @@ function DropZone({ dragOver, onBrowse, onDragOver, onDragLeave, onDrop }) {
   );
 }
 
-function Results({ data, title, onReplace, filter, onFilter, query, onQuery, sort, onSort }) {
+function Results({
+  data, title, onReplace, replaceLabel, stores, scope, onScope, filter, onFilter, query, onQuery, sort, onSort,
+}) {
   const total = data.viandeCruG + data.pouletCruG + data.tenderCruG;
   const visible = useMemo(() => {
     const needle = normalizeKey(query);
@@ -197,8 +286,10 @@ function Results({ data, title, onReplace, filter, onFilter, query, onQuery, sor
             {[data.headerLine, data.fileName].filter(Boolean).join(' · ')}
           </p>
         </div>
-        <button type="button" className="btn-ghost" onClick={onReplace}>Autre fichier</button>
+        <button type="button" className="btn-ghost" onClick={onReplace}>{replaceLabel}</button>
       </div>
+
+      {stores && <StoreBoard stores={stores} scope={scope} onScope={onScope} />}
 
       <section className="kpis" aria-label="Indicateurs du mois">
         <Kpi name="viande" label="Viande crue" grams={data.viandeCruG} hint="Viande cuite × 1,4" />
@@ -294,6 +385,86 @@ function Results({ data, title, onReplace, filter, onFilter, query, onQuery, sor
           </table>
         </div>
       </section>
+    </section>
+  );
+}
+
+function sumStores(stores) {
+  const map = new Map();
+  for (const store of stores) {
+    for (const line of store.lines) {
+      const current = map.get(line.nom);
+      if (!current) {
+        map.set(line.nom, { ...line });
+      } else {
+        current.qty += line.qty;
+        current.pouletCruG += line.pouletCruG;
+        current.viandeCruG += line.viandeCruG;
+        current.tenderCruG += line.tenderCruG;
+      }
+    }
+  }
+  const lines = [...map.values()].sort(
+    (a, b) => (b.pouletCruG + b.viandeCruG + b.tenderCruG) - (a.pouletCruG + a.viandeCruG + a.tenderCruG),
+  );
+  const sum = (key) => lines.reduce((total, line) => total + line[key], 0);
+  return {
+    lines,
+    pouletCruG: sum('pouletCruG'),
+    viandeCruG: sum('viandeCruG'),
+    tenderCruG: sum('tenderCruG'),
+  };
+}
+
+function StoreBoard({ stores, scope, onScope }) {
+  const villes = [...new Set(stores.map((store) => store.ville))];
+  return (
+    <section className="stores" aria-label="Villes et points de vente">
+      <div className="segment" role="tablist" aria-label="Filtrer par ville">
+        <button type="button" role="tab" aria-selected={scope === 'all'} onClick={() => onScope('all')}>
+          Réseau
+        </button>
+        {villes.map((ville) => (
+          <button
+            key={ville}
+            type="button"
+            role="tab"
+            aria-selected={scope === `ville:${ville}`}
+            onClick={() => onScope(`ville:${ville}`)}
+          >
+            {ville}
+          </button>
+        ))}
+      </div>
+      <div className="city-grid">
+        {villes.map((ville) => (
+          <section key={ville} className="city">
+            <h2>{ville}</h2>
+            <ul>
+              {stores.filter((store) => store.ville === ville).map((store) => (
+                <li key={store.id}>
+                  <button
+                    type="button"
+                    className={scope === store.id ? 'is-on' : ''}
+                    onClick={() => onScope(store.id)}
+                  >
+                    <span className="store-name">{store.nom}</span>
+                    {store.error ? (
+                      <span className="store-error">{store.error}</span>
+                    ) : (
+                      <span className="store-figs">
+                        <span>Viande {formatKg(store.viandeCruG)}</span>
+                        <span>Poulet {formatKg(store.pouletCruG)}</span>
+                        <span>Tender {formatKg(store.tenderCruG)}</span>
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     </section>
   );
 }

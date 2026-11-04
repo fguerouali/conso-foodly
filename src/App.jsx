@@ -418,6 +418,10 @@ function sumStores(stores) {
 
 function StoreBoard({ stores, scope, onScope }) {
   const villes = [...new Set(stores.map((store) => store.ville))];
+  const activeVille = String(scope).startsWith('ville:')
+    ? String(scope).slice(6)
+    : (stores.find((store) => store.id === scope)?.ville || '');
+  const visibleVilles = activeVille ? villes.filter((ville) => ville === activeVille) : villes;
   return (
     <section className="stores" aria-label="Villes et points de vente">
       <div className="segment" role="tablist" aria-label="Filtrer par ville">
@@ -429,7 +433,7 @@ function StoreBoard({ stores, scope, onScope }) {
             key={ville}
             type="button"
             role="tab"
-            aria-selected={scope === `ville:${ville}`}
+            aria-selected={activeVille === ville}
             onClick={() => onScope(`ville:${ville}`)}
           >
             {ville}
@@ -437,7 +441,7 @@ function StoreBoard({ stores, scope, onScope }) {
         ))}
       </div>
       <div className="city-grid">
-        {villes.map((ville) => (
+        {visibleVilles.map((ville) => (
           <section key={ville} className="city">
             <h2>{ville}</h2>
             <ul>

@@ -54,7 +54,7 @@ function isFoodly(store) {
   return /foodly/i.test(String(store?.nom_societe || ''));
 }
 
-export async function fetchNetwork(month) {
+export async function fetchNetwork(month, onlyIds) {
   const login = process.env.LACAISSE_LOGIN;
   const password = process.env.LACAISSE_PASSWORD;
   if (!login || !password) {
@@ -66,7 +66,10 @@ export async function fetchNetwork(month) {
   if (!auth.token) throw fail('Identifiants La Caisse refusés.', 401);
 
   const listed = await post('caisse/listCaisse', { email: login }, auth.token);
-  const stores = (Array.isArray(listed.data) ? listed.data : []).filter(isFoodly);
+  const wanted = new Set((onlyIds || []).map(Number));
+  const stores = (Array.isArray(listed.data) ? listed.data : []).filter((store) => (
+    isFoodly(store) && (!wanted.size || wanted.has(Number(store.id_caisse)))
+  ));
   if (stores.length === 0) throw fail('Aucun point de vente Foodly trouvé.', 404);
 
   const details = await Promise.all(stores.map(async (store) => {

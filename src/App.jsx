@@ -1,5 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from './api.js';
+import Admin from './Admin.jsx';
 import { normalizeKey, parseWorkbook } from './compute.js';
+import Saisie from './Saisie.jsx';
 import {
   formatKg,
   formatQty,
@@ -9,7 +12,8 @@ import {
   portionLabel,
 } from './format.js';
 
-export default function App() {
+function Desk({ session, onLogout }) {
+  const [view, setView] = useState('caisse');
   const fileRef = useRef(null);
   const [report, setReport] = useState(null);
   const [network, setNetwork] = useState(null);
@@ -53,13 +57,10 @@ export default function App() {
     setLoading(true);
     setParsingError('');
     try {
-      const response = await fetch('/api/conso', {
+      const body = await api('/api/conso', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month }),
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || 'Lecture La Caisse impossible.');
       setReport(null);
       setNetwork(body);
       setScope('all');
@@ -113,20 +114,31 @@ export default function App() {
     <div className="page">
       <div className="wrap">
         <header className="topbar">
-          <img className="logo" src="/logo.png" alt="Foodly Shawarma" />
-          <div className="brand">
-            <p className="brand-kicker">Foodly Shawarma</p>
-            <p className="brand-title">Consommation crue</p>
-          </div>
-          {shown && (
-            <div className="mini" aria-hidden="true">
-              <span><b>{formatKg(shown.viandeCruG)}</b> kg viande</span>
-              <span><b>{formatKg(shown.pouletCruG)}</b> kg poulet</span>
-              <span><b>{formatKg(shown.tenderCruG)}</b> kg tender</span>
+          <div className="topbar-row">
+            <img className="logo" src="/logo.png" alt="Foodly Shawarma" />
+            <div className="brand">
+              <p className="brand-kicker">Foodly Shawarma</p>
+              <p className="brand-title">Consommation crue</p>
             </div>
-          )}
+            <button type="button" className="btn-ghost logout" onClick={onLogout}>Sortir</button>
+            {shown && view === 'caisse' && (
+              <div className="mini" aria-hidden="true">
+                <span><b>{formatKg(shown.viandeCruG)}</b> kg viande</span>
+                <span><b>{formatKg(shown.pouletCruG)}</b> kg poulet</span>
+                <span><b>{formatKg(shown.tenderCruG)}</b> kg tender</span>
+              </div>
+            )}
+          </div>
+          <nav className="app-nav" aria-label="Sections">
+            <button type="button" aria-selected={view === 'caisse'} onClick={() => setView('caisse')}>Caisse</button>
+            <button type="button" aria-selected={view === 'saisie'} onClick={() => setView('saisie')}>Saisie</button>
+            <button type="button" aria-selected={view === 'equipe'} onClick={() => setView('equipe')}>Équipe</button>
+          </nav>
         </header>
 
+        {view === 'saisie' && <Saisie session={session} />}
+        {view === 'equipe' && <Admin />}
+        {view === 'caisse' && <>
         <main>
           {!shown && (
             <section className="hero">
@@ -200,10 +212,10 @@ export default function App() {
             />
           )}
         </main>
-
         <footer className="footer">
           <p>Poulet cuit × 1,3 · Viande cuite × 1,4 · Tender au grammage du barème.</p>
         </footer>
+        </>}
       </div>
 
       <input
@@ -214,6 +226,93 @@ export default function App() {
         accept=".xlsx,.xls,.xlsm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         onChange={onInput}
       />
+    </div>
+  );
+}
+
+function logoutSession(setSession) {
+  sessionStorage.removeItem('foodly-token');
+  setSession(null);
+}
+
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const token = sessionStorage.getItem('foodly-token');
+    if (!token) {
+      setReady(true);
+      return;
+    }
+    api('/api/me')
+      .then((body) => setSession(body))
+      .catch(() => sessionStorage.removeItem('foodly-token'))
+      .finally(() => setReady(true));
+  }, []);
+
+  if (!ready) return null;
+  if (!session) return <Login onLogin={setSession} />;
+  const leave = () => logoutSession(setSession);
+  if (session.role === 'manager') {
+    return (
+      <div className="page">
+        <div className="wrap">
+          <header className="topbar">
+            <img className="logo" src="/logo.png" alt="Foodly Shawarma" />
+            <div className="brand">
+              <p className="brand-kicker">Foodly Shawarma</p>
+              <p className="brand-title">{session.nom}</p>
+            </div>
+            <button type="button" className="btn-ghost logout" onClick={leave}>Sortir</button>
+          </header>
+          <Saisie session={session} />
+        </div>
+      </div>
+    );
+  }
+  return <Desk session={session} onLogout={leave} />;
+}
+
+function Login({ onLogin }) {
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const body = await api('/api/login', {
+        method: 'POST',
+        body: JSON.stringify({ login, password }),
+      });
+      sessionStorage.setItem('foodly-token', body.token);
+      onLogin(body);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="page">
+      <form className="login" onSubmit={submit}>
+        <img className="logo" src="/logo.png" alt="Foodly Shawarma" />
+        <h1>Consommation</h1>
+        <p>Saisie du jour ou lecture des ventes.</p>
+        <label>Identifiant
+          <input autoComplete="username" value={login} onChange={(event) => setLogin(event.target.value)} required />
+        </label>
+        <label>Mot de passe
+          <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Connexion…' : 'Entrer'}</button>
+      </form>
     </div>
   );
 }

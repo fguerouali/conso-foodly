@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { access } from 'node:fs/promises';
 import http from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
-import { fetchNetwork } from './server/lacaisse.js';
+import { handleApi } from './server/api.js';
 
 const port = Number(process.env.PORT) || 8787;
 const root = join(process.cwd(), 'dist');
@@ -17,22 +17,6 @@ const types = {
   '.woff2': 'font/woff2',
 };
 
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => {
-      try {
-        const raw = Buffer.concat(chunks).toString('utf8');
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch (error) {
-        reject(error);
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
@@ -46,17 +30,8 @@ async function sendFile(res, filePath) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (await handleApi(req, res)) return;
     const url = new URL(req.url, 'http://localhost');
-    if (req.method === 'POST' && url.pathname === '/api/conso') {
-      const body = await readJson(req);
-      const report = await fetchNetwork(body.month);
-      sendJson(res, 200, report);
-      return;
-    }
-    if (url.pathname.startsWith('/api/')) {
-      sendJson(res, 404, { error: 'Introuvable.' });
-      return;
-    }
     const relative = decodeURIComponent(url.pathname).replace(/^[/\\]+/, '');
     const filePath = relative ? resolve(root, relative) : join(root, 'index.html');
     const rootPath = resolve(root);
@@ -74,6 +49,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => {
+server.listen(port, '0.0.0.0', () => {
   console.log(`conso-foodly http://localhost:${port}`);
 });

@@ -126,6 +126,11 @@ export async function writeWeek(storeId, week, days) {
   await save(db);
 }
 
+export async function allWeeks() {
+  const db = await load();
+  return db.weeks;
+}
+
 export async function weeksForStore(storeId) {
   const db = await load();
   const prefix = `${storeId}|`;

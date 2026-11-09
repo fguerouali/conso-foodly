@@ -9,6 +9,7 @@ import {
   readWeek,
   signToken,
   updateUser,
+  allWeeks,
   weeksForStore,
   writeWeek,
 } from './db.js';
@@ -253,34 +254,40 @@ export async function handleApi(req, res) {
     if (req.method === 'POST' && pathname === '/api/rapprochement') {
       const session = requireUser(req);
       const body = await readJson(req);
-      const storeId = Number(body.storeId);
       const month = String(body.month || '');
-      if (!canStore(session, storeId) || !/^\d{4}-\d{2}$/.test(month)) {
-        throw fail('Mois ou restaurant invalide.', 400);
-      }
+      if (!/^\d{4}-\d{2}$/.test(month)) throw fail('Mois invalide.', 400);
+      const allowed = storesFor(session.storeIds);
       let network = { stores: [] };
       try {
-        network = await fetchNetwork(month, [storeId]);
+        network = await fetchNetwork(month, allowed.map((store) => store.id));
       } catch (error) {
         if (error.status !== 404) throw error;
       }
-      const known = RESTAURANTS.find((item) => item.id === storeId);
-      const store = network.stores.find((item) => item.id === storeId) || (known && {
-        id: known.id,
-        nom: known.nom,
-        ville: known.ville,
-        error: 'Ce restaurant n’est pas encore relié à La Caisse.',
+      const remote = new Map((network.stores || []).map((store) => [store.id, store]));
+      const saved = await allWeeks();
+      const stores = allowed.map((store) => {
+        const caisse = remote.get(store.id);
+        const weeks = {};
+        const prefix = `${store.id}|`;
+        for (const [key, value] of Object.entries(saved)) {
+          if (key.startsWith(prefix)) weeks[key.slice(prefix.length)] = value;
+        }
+        const saisie = monthConso(weeks, month);
+        return {
+          id: store.id,
+          nom: caisse?.nom || store.nom,
+          ville: caisse?.ville || store.ville,
+          error: caisse ? caisse.error : 'Ce restaurant n’est pas encore relié à La Caisse.',
+          days: saisie.days,
+          saisie: { poulet: saisie.poulet, viande: saisie.viande },
+          caisse: {
+            pouletKg: (caisse?.pouletCruG || 0) / 1000,
+            viandeKg: (caisse?.viandeCruG || 0) / 1000,
+          },
+        };
       });
-      const saisie = monthConso(await weeksForStore(storeId), month);
-      sendJson(res, 200, {
-        month,
-        store: store ? { id: store.id, nom: store.nom, ville: store.ville, error: store.error } : null,
-        saisie,
-        caisse: {
-          pouletKg: (store?.pouletCruG || 0) / 1000,
-          viandeKg: (store?.viandeCruG || 0) / 1000,
-        },
-      });
+      stores.sort((a, b) => a.ville.localeCompare(b.ville, 'fr') || a.nom.localeCompare(b.nom, 'fr'));
+      sendJson(res, 200, { month, stores });
       return true;
     }
 

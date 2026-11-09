@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.js';
 import Admin from './Admin.jsx';
 import { normalizeKey, parseWorkbook } from './compute.js';
+import Rapprochement from './Rapprochement.jsx';
 import Saisie from './Saisie.jsx';
 import {
   formatKg,
@@ -132,11 +133,13 @@ function Desk({ session, onLogout }) {
           <nav className="app-nav" aria-label="Sections">
             <button type="button" aria-selected={view === 'caisse'} onClick={() => setView('caisse')}>Caisse</button>
             <button type="button" aria-selected={view === 'saisie'} onClick={() => setView('saisie')}>Saisie</button>
+            <button type="button" aria-selected={view === 'rappro'} onClick={() => setView('rappro')}>Rapprochement</button>
             <button type="button" aria-selected={view === 'equipe'} onClick={() => setView('equipe')}>Équipe</button>
           </nav>
         </header>
 
         {view === 'saisie' && <Saisie session={session} />}
+        {view === 'rappro' && <Rapprochement />}
         {view === 'equipe' && <Admin />}
         {view === 'caisse' && <>
         <main>
@@ -255,23 +258,34 @@ export default function App() {
   if (!session) return <Login onLogin={setSession} />;
   const leave = () => logoutSession(setSession);
   if (session.role === 'manager') {
-    return (
-      <div className="page">
-        <div className="wrap">
-          <header className="topbar">
+    return <Manager session={session} onLogout={leave} />;
+  }
+  return <Desk session={session} onLogout={leave} />;
+}
+
+function Manager({ session, onLogout }) {
+  const [view, setView] = useState('saisie');
+  return (
+    <div className="page">
+      <div className="wrap">
+        <header className="topbar">
+          <div className="topbar-row">
             <img className="logo" src="/logo.png" alt="Foodly Shawarma" />
             <div className="brand">
               <p className="brand-kicker">Foodly Shawarma</p>
               <p className="brand-title">{session.nom}</p>
             </div>
-            <button type="button" className="btn-ghost logout" onClick={leave}>Sortir</button>
-          </header>
-          <Saisie session={session} />
-        </div>
+            <button type="button" className="btn-ghost logout" onClick={onLogout}>Sortir</button>
+          </div>
+          <nav className="app-nav" aria-label="Sections">
+            <button type="button" aria-selected={view === 'saisie'} onClick={() => setView('saisie')}>Saisie</button>
+            <button type="button" aria-selected={view === 'rappro'} onClick={() => setView('rappro')}>Rapprochement</button>
+          </nav>
+        </header>
+        {view === 'saisie' ? <Saisie session={session} /> : <Rapprochement />}
       </div>
-    );
-  }
-  return <Desk session={session} onLogout={leave} />;
+    </div>
+  );
 }
 
 function Login({ onLogin }) {

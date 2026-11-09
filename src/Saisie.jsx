@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
-import { formatKg } from './format.js';
 import {
   DAYS,
   blankWeek,
@@ -17,10 +16,6 @@ function formatAmount(value) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value || 0);
 }
 
-function monthOfMonday(monday) {
-  return monday.slice(0, 7);
-}
-
 export default function Saisie({ session }) {
   const [storeId, setStoreId] = useState(session.stores[0]?.id || 0);
   const [monday, setMonday] = useState(() => mondayOf(new Date()));
@@ -30,9 +25,6 @@ export default function Saisie({ session }) {
   const [carry, setCarry] = useState({ poulet: null, viande: null });
   const [status, setStatus] = useState('');
   const [screen, setScreen] = useState('saisie');
-  const [month, setMonth] = useState(() => monthOfMonday(mondayOf(new Date())));
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -92,24 +84,6 @@ export default function Saisie({ session }) {
     }
   }
 
-  async function botona() {
-    setLoading(true);
-    setError('');
-    try {
-      await save();
-      const body = await api('/api/rapprochement', {
-        method: 'POST',
-        body: JSON.stringify({ storeId, month }),
-      });
-      setReport(body);
-      setScreen('rappro');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const store = session.stores.find((item) => item.id === storeId);
   const conso = protein === 'poulet' ? current.poulet.conso : current.viande.conso;
 
@@ -125,19 +99,6 @@ export default function Saisie({ session }) {
           setDay(DAYS[(date.getDay() + 6) % 7]);
           setScreen('saisie');
         }}
-      />
-    );
-  }
-
-  if (screen === 'rappro' && report) {
-    return (
-      <Rapprochement
-        report={report}
-        month={month}
-        onMonth={setMonth}
-        onRefresh={botona}
-        loading={loading}
-        onBack={() => setScreen('saisie')}
       />
     );
   }
@@ -199,14 +160,7 @@ export default function Saisie({ session }) {
           <span>Consommation</span>
           <strong>{formatAmount(conso)} kg</strong>
         </div>
-        <button type="button" className="btn-ghost" onClick={save}>{status || 'Enregistrer'}</button>
-        <label className="month-mini">
-          Mois
-          <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
-        </label>
-        <button type="button" className="btn-primary" onClick={botona} disabled={loading}>
-          {loading ? 'Calcul…' : 'BOTONA'}
-        </button>
+        <button type="button" className="btn-primary" onClick={save}>{status || 'Enregistrer'}</button>
       </div>
     </section>
   );
@@ -290,44 +244,6 @@ function Historique({ session, onBack, onOpen }) {
             <span>Viande <b>{row.viande == null ? '—' : `${formatAmount(row.viande)} kg`}</b></span>
           </button>
         ))}
-      </div>
-    </section>
-  );
-}
-
-function Rapprochement({ report, month, onMonth, onRefresh, loading, onBack }) {
-  const rows = [
-    ['Viande', report.saisie.viande, report.caisse.viandeKg],
-    ['Poulet', report.saisie.poulet, report.caisse.pouletKg],
-  ];
-  return (
-    <section className="saisie">
-      <button type="button" className="btn-ghost" onClick={onBack}>Retour à la saisie</button>
-      <h1>Rapprochement</h1>
-      <p className="meta">{report.store?.nom} · {report.saisie.days} jour{report.saisie.days > 1 ? 's' : ''} saisi{report.saisie.days > 1 ? 's' : ''}</p>
-      <label className="month-field">
-        Mois
-        <input type="month" value={month} onChange={(event) => onMonth(event.target.value)} />
-      </label>
-      <button type="button" className="btn-primary" onClick={onRefresh} disabled={loading}>
-        {loading ? 'Calcul…' : 'BOTONA'}
-      </button>
-      {report.store?.error && <p className="error">{report.store.error}</p>}
-      <div className="compare">
-        {rows.map(([label, saisie, caisse]) => {
-          const ecart = (caisse || 0) - (saisie || 0);
-          return (
-            <article key={label} className="city">
-              <h2>{label}</h2>
-              <p className="compare-line"><span>Consommation saisie</span><b>{formatAmount(saisie)} kg</b></p>
-              <p className="compare-line"><span>Cru caisse</span><b>{formatKg(caisse * 1000)} kg</b></p>
-              <p className={`compare-line ecart ${ecart < 0 ? 'is-neg' : ''}`}>
-                <span>Écart caisse − saisie</span>
-                <b>{ecart > 0 ? '+' : ''}{formatAmount(ecart)} kg</b>
-              </p>
-            </article>
-          );
-        })}
       </div>
     </section>
   );

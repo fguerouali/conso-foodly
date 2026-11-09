@@ -736,6 +736,42 @@ th.num .sort { width: 100%; text-align: right; }
 .checks legend { font-weight: 600; margin-bottom: 4px; }
 .checks label { display: flex; gap: 10px; align-items: center; min-height: 44px; }
 .muted { color: #6e6e73; }
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.filters label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #6e6e73;
+}
+.filters label:last-child { grid-column: 1 / -1; }
+.filters input, .filters select {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  font-size: 16px;
+}
+.history-list { display: grid; gap: 10px; }
+.history-row {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+}
+.history-row span { display: flex; justify-content: space-between; gap: 12px; }
+.history-row em { color: #6e6e73; font-style: normal; }
+.history-row b { font-variant-numeric: tabular-nums; }
 
 @media (max-width: 720px) {
   .savebar { grid-template-columns: 1fr 1fr; }

@@ -5,6 +5,7 @@ export const RESTAURANTS = [
   { id: 3905, nom: 'Foodly Bourgogne', ville: 'Casablanca' },
   { id: 2582, nom: 'Foodly Californie', ville: 'Casablanca' },
   { id: 1792, nom: 'Foodly Zeraoui', ville: 'Casablanca' },
+  { id: 9101, nom: 'Foodly Tantan', ville: 'Tan-Tan' },
   { id: 4234, nom: 'Foodly Mohammedia Parc', ville: 'Mohammedia' },
   { id: 4574, nom: 'Foodly Hay Riad', ville: 'Rabat' },
 ];
@@ -156,6 +157,25 @@ export function shiftMonday(monday, weeks) {
   const date = new Date(y, m - 1, d);
   date.setDate(date.getDate() + weeks * 7);
   return isoDate(date);
+}
+
+export function historyRows(weeks) {
+  const rows = [];
+  for (const [monday, week] of Object.entries(weeks || {})) {
+    const computed = computeWeek(week);
+    for (const day of DAYS) {
+      const row = computed[day];
+      if (!row.poulet.entered && !row.viande.entered) continue;
+      rows.push({
+        date: dateOfDay(monday, day),
+        day,
+        poulet: row.poulet.entered ? row.poulet.conso : null,
+        viande: row.viande.entered ? row.viande.conso : null,
+      });
+    }
+  }
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  return rows;
 }
 
 export function dateOfDay(monday, day) {

@@ -113,6 +113,22 @@ export default function Saisie({ session }) {
   const store = session.stores.find((item) => item.id === storeId);
   const conso = protein === 'poulet' ? current.poulet.conso : current.viande.conso;
 
+  if (screen === 'historique') {
+    return (
+      <Historique
+        session={session}
+        onBack={() => setScreen('saisie')}
+        onOpen={(row) => {
+          const date = new Date(`${row.date}T12:00:00`);
+          setStoreId(row.storeId);
+          setMonday(mondayOf(date));
+          setDay(DAYS[(date.getDay() + 6) % 7]);
+          setScreen('saisie');
+        }}
+      />
+    );
+  }
+
   if (screen === 'rappro' && report) {
     return (
       <Rapprochement
@@ -128,6 +144,10 @@ export default function Saisie({ session }) {
 
   return (
     <section className="saisie">
+      <div className="segment protein" role="tablist" aria-label="Vue">
+        <button type="button" role="tab" aria-selected={screen === 'saisie'} onClick={() => setScreen('saisie')}>Saisie</button>
+        <button type="button" role="tab" aria-selected={false} onClick={() => setScreen('historique')}>Historique</button>
+      </div>
       {session.stores.length > 1 && (
         <div className="days" role="tablist" aria-label="Restaurant">
           {session.stores.map((item) => (
@@ -187,6 +207,89 @@ export default function Saisie({ session }) {
         <button type="button" className="btn-primary" onClick={botona} disabled={loading}>
           {loading ? 'Calcul…' : 'BOTONA'}
         </button>
+      </div>
+    </section>
+  );
+}
+
+function monthBounds(date = new Date()) {
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const last = new Date(y, m + 1, 0).getDate();
+  const mm = String(m + 1).padStart(2, '0');
+  return {
+    from: `${y}-${mm}-01`,
+    to: `${y}-${mm}-${String(last).padStart(2, '0')}`,
+  };
+}
+
+function formatDay(iso) {
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${iso}T12:00:00`));
+}
+
+function Historique({ session, onBack, onOpen }) {
+  const bounds = monthBounds();
+  const [from, setFrom] = useState(bounds.from);
+  const [to, setTo] = useState(bounds.to);
+  const [storeId, setStoreId] = useState(session.stores.length > 1 ? '' : String(session.stores[0]?.id || ''));
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+    setLoading(true);
+    const query = new URLSearchParams({ from, to });
+    if (storeId) query.set('storeId', storeId);
+    api(`/api/historique?${query}`)
+      .then((body) => {
+        if (!ignore) setRows(body.rows || []);
+      })
+      .catch((err) => {
+        if (!ignore) setError(err.message);
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => { ignore = true; };
+  }, [from, to, storeId]);
+
+  return (
+    <section className="saisie">
+      <div className="segment protein" role="tablist" aria-label="Vue">
+        <button type="button" role="tab" onClick={onBack}>Saisie</button>
+        <button type="button" role="tab" aria-selected="true">Historique</button>
+      </div>
+      <div className="filters">
+        <label>Du
+          <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+        </label>
+        <label>Au
+          <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+        </label>
+        <label>Restaurant
+          <select value={storeId} onChange={(event) => setStoreId(event.target.value)}>
+            {session.stores.length > 1 && <option value="">Tous</option>}
+            {session.stores.map((store) => (
+              <option key={store.id} value={store.id}>{store.nom.replace(/^Foodly\s+/i, '')}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {error && <p className="error">{error}</p>}
+      {loading && <p className="drop-sub">Chargement…</p>}
+      {!loading && rows.length === 0 && <p className="drop-sub">Aucune saisie sur cette période.</p>}
+      <div className="history-list">
+        {rows.map((row) => (
+          <button key={`${row.storeId}-${row.date}`} type="button" className="history-row" onClick={() => onOpen(row)}>
+            <span>
+              <strong>{formatDay(row.date)}</strong>
+              <em>{row.nom.replace(/^Foodly\s+/i, '')}</em>
+            </span>
+            <span>Poulet <b>{row.poulet == null ? '—' : `${formatAmount(row.poulet)} kg`}</b></span>
+            <span>Viande <b>{row.viande == null ? '—' : `${formatAmount(row.viande)} kg`}</b></span>
+          </button>
+        ))}
       </div>
     </section>
   );

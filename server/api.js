@@ -18,6 +18,7 @@ import {
   blankPoulet,
   blankViande,
   carryBefore,
+  historyRows,
   monthConso,
 } from '../src/sheet.js';
 
@@ -222,6 +223,33 @@ export async function handleApi(req, res) {
       }
     }
 
+    if (req.method === 'GET' && pathname === '/api/historique') {
+      const session = requireUser(req);
+      const from = url.searchParams.get('from') || '';
+      const to = url.searchParams.get('to') || '';
+      const storeId = Number(url.searchParams.get('storeId') || 0);
+      if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+        throw fail('Dates invalides.', 400);
+      }
+      let stores = storesFor(session.storeIds);
+      if (storeId) {
+        if (!canStore(session, storeId)) throw fail('Restaurant invalide.', 400);
+        stores = stores.filter((store) => store.id === storeId);
+      }
+      const rows = [];
+      for (const store of stores) {
+        const found = historyRows(await weeksForStore(store.id));
+        for (const row of found) {
+          if (from && row.date < from) continue;
+          if (to && row.date > to) continue;
+          rows.push({ ...row, storeId: store.id, nom: store.nom });
+        }
+      }
+      rows.sort((a, b) => b.date.localeCompare(a.date) || a.nom.localeCompare(b.nom, 'fr'));
+      sendJson(res, 200, { rows });
+      return true;
+    }
+
     if (req.method === 'POST' && pathname === '/api/rapprochement') {
       const session = requireUser(req);
       const body = await readJson(req);
@@ -230,8 +258,19 @@ export async function handleApi(req, res) {
       if (!canStore(session, storeId) || !/^\d{4}-\d{2}$/.test(month)) {
         throw fail('Mois ou restaurant invalide.', 400);
       }
-      const network = await fetchNetwork(month, [storeId]);
-      const store = network.stores.find((item) => item.id === storeId);
+      let network = { stores: [] };
+      try {
+        network = await fetchNetwork(month, [storeId]);
+      } catch (error) {
+        if (error.status !== 404) throw error;
+      }
+      const known = RESTAURANTS.find((item) => item.id === storeId);
+      const store = network.stores.find((item) => item.id === storeId) || (known && {
+        id: known.id,
+        nom: known.nom,
+        ville: known.ville,
+        error: 'Ce restaurant n’est pas encore relié à La Caisse.',
+      });
       const saisie = monthConso(await weeksForStore(storeId), month);
       sendJson(res, 200, {
         month,

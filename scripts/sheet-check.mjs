@@ -1,4 +1,4 @@
-import { blankWeek, carryBefore, computeWeek, monthConso } from '../src/sheet.js';
+import { blankWeek, carryBefore, computeWeek, historyRows, monthConso } from '../src/sheet.js';
 
 const week = blankWeek();
 week.lundi.poulet = {
@@ -70,6 +70,11 @@ const started = computeWeek(mid, { poulet: null, viande: null });
 if (!started.lundi.poulet.opening || !started.mercredi.poulet.opening || started.jeudi.poulet.opening) {
   failed += 1;
   console.error('ouverture mercredi', started.lundi.poulet.opening, started.mercredi.poulet.opening, started.jeudi.poulet.opening);
+}
+const listed = historyRows({ '2026-11-02': week });
+if (listed.length !== 2 || listed[0].date !== '2026-11-03' || listed[0].poulet !== 0 || listed[1].poulet !== 8 || listed[1].viande !== 13) {
+  failed += 1;
+  console.error('historique', listed);
 }
 if (started.jeudi.poulet.init.poulet !== 7) {
   failed += 1;

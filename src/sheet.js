@@ -5,7 +5,6 @@ export const RESTAURANTS = [
   { id: 3905, nom: 'Foodly Bourgogne', ville: 'Casablanca' },
   { id: 2582, nom: 'Foodly Californie', ville: 'Casablanca' },
   { id: 1792, nom: 'Foodly Zeraoui', ville: 'Casablanca' },
-  { id: 9101, nom: 'Foodly Tantan', ville: 'Tan-Tan' },
   { id: 4234, nom: 'Foodly Mohammedia Parc', ville: 'Mohammedia' },
   { id: 4574, nom: 'Foodly Hay Riad', ville: 'Rabat' },
 ];

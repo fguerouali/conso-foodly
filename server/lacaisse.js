@@ -54,14 +54,30 @@ function isFoodly(store) {
   return /foodly/i.test(String(store?.nom_societe || ''));
 }
 
-export async function fetchNetwork(month, onlyIds) {
+function caisseDate(iso) {
+  const [year, month, day] = iso.split('-');
+  return `${day}-${month}-${year.slice(2)}`;
+}
+
+function spanWindow(from, to) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    throw fail('Choisissez une date.', 400);
+  }
+  return {
+    month: from.slice(0, 7),
+    periodStart: from,
+    periodEnd: to,
+    dateDebut: caisseDate(from),
+    dateFin: caisseDate(to),
+  };
+}
+
+async function fetchPeriod(period, onlyIds) {
   const login = process.env.LACAISSE_LOGIN;
   const password = process.env.LACAISSE_PASSWORD;
   if (!login || !password) {
     throw fail('La connexion La Caisse n’est pas configurée sur le serveur.', 503);
   }
-
-  const period = monthWindow(month);
   const auth = await post('auth', { login, password });
   if (!auth.token) throw fail('Identifiants La Caisse refusés.', 401);
 
@@ -127,4 +143,12 @@ export async function fetchNetwork(month, onlyIds) {
     tenderCruG: sum('tenderCruG'),
     stores: details,
   };
+}
+
+export async function fetchNetwork(month, onlyIds) {
+  return fetchPeriod(monthWindow(month), onlyIds);
+}
+
+export async function fetchDay(date, onlyIds) {
+  return fetchPeriod(spanWindow(date, date), onlyIds);
 }

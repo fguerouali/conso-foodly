@@ -199,3 +199,19 @@ export function monthConso(weeks, month) {
   }
   return { poulet: round2(poulet), viande: round2(viande), days };
 }
+
+export function dayConso(weeks, iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const monday = mondayOf(date);
+  const day = DAYS[(date.getDay() + 6) % 7];
+  const week = weeks?.[monday];
+  if (!week) return { poulet: null, viande: null, entered: false };
+  const row = computeWeek(week)[day];
+  const entered = row.poulet.entered || row.viande.entered;
+  return {
+    poulet: row.poulet.entered ? row.poulet.conso : null,
+    viande: row.viande.entered ? row.viande.conso : null,
+    entered,
+  };
+}

@@ -796,18 +796,21 @@ th.num .sort { width: 100%; text-align: right; }
   font-size: 16px;
   background: #fff;
 }
-.rappro-city { display: grid; gap: 10px; }
+.rappro-city { display: grid; gap: 10px; min-width: 0; }
+.rappro-city > * { min-width: 0; }
 .rappro-city > h2 { margin: 8px 0 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #6e6e73; }
 .rappro-card {
   background: #fff;
   border-radius: 20px;
   padding: 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 .rappro-card.is-total { background: #1d1d1f; color: #fff; }
 .rappro-card header h2 { margin: 0; font-size: 22px; }
 .rappro-card header p { margin: 2px 0 12px; color: #6e6e73; font-size: 13px; }
 .rappro-card.is-total header p { color: rgba(255,255,255,0.72); }
-.gap-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.gap-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; }
 .gap-table th, .gap-table td {
   padding: 8px 0;
   text-align: right;

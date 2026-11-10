@@ -1,4 +1,4 @@
-import { fetchNetwork } from './lacaisse.js';
+import { fetchDay, fetchNetwork } from './lacaisse.js';
 import {
   checkPassword,
   createUser,
@@ -10,7 +10,10 @@ import {
   signToken,
   updateUser,
   allWeeks,
+  caisseDaysOn,
+  importedDates,
   weeksForStore,
+  writeCaisseDays,
   writeWeek,
 } from './db.js';
 import {
@@ -19,8 +22,11 @@ import {
   blankPoulet,
   blankViande,
   carryBefore,
+  dayConso,
   historyRows,
   monthConso,
+  mondayOf,
+  dateOfDay,
 } from '../src/sheet.js';
 
 function sendJson(res, status, body) {
@@ -112,6 +118,36 @@ function issue(role, extra) {
     exp: Date.now() + 1000 * 60 * 60 * 24 * 14,
     ...extra,
   });
+}
+
+function weeksOf(saved, storeId) {
+  const prefix = `${storeId}|`;
+  const weeks = {};
+  for (const [key, value] of Object.entries(saved || {})) {
+    if (key.startsWith(prefix)) weeks[key.slice(prefix.length)] = value;
+  }
+  return weeks;
+}
+
+function dailyRows(allowed, date, snaps, saved) {
+  return allowed.map((store) => {
+    const snap = snaps[store.id];
+    const saisie = dayConso(weeksOf(saved, store.id), date);
+    const imported = Boolean(snap) && !snap.error;
+    return {
+      id: store.id,
+      nom: store.nom,
+      ville: store.ville,
+      error: snap?.error || '',
+      imported,
+      days: saisie.entered ? 1 : 0,
+      saisie: { poulet: saisie.poulet || 0, viande: saisie.viande || 0 },
+      caisse: {
+        pouletKg: imported ? (snap.pouletG || 0) / 1000 : 0,
+        viandeKg: imported ? (snap.viandeG || 0) / 1000 : 0,
+      },
+    };
+  }).sort((a, b) => a.ville.localeCompare(b.ville, 'fr') || a.nom.localeCompare(b.nom, 'fr'));
 }
 
 export async function handleApi(req, res) {
@@ -248,6 +284,42 @@ export async function handleApi(req, res) {
       }
       rows.sort((a, b) => b.date.localeCompare(a.date) || a.nom.localeCompare(b.nom, 'fr'));
       sendJson(res, 200, { rows });
+      return true;
+    }
+
+    if ((req.method === 'GET' || req.method === 'POST') && pathname === '/api/caisse-jour') {
+      const session = requireUser(req);
+      const body = req.method === 'POST' ? await readJson(req) : {};
+      const date = String((req.method === 'GET' ? url.searchParams.get('date') : body.date) || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw fail('Choisissez un jour.', 400);
+      const allowed = storesFor(session.storeIds);
+      if (req.method === 'POST') {
+        let network = { stores: [] };
+        try {
+          network = await fetchDay(date, allowed.map((store) => store.id));
+        } catch (error) {
+          if (error.status !== 404) throw error;
+        }
+        const found = new Map((network.stores || []).map((store) => [store.id, store]));
+        await writeCaisseDays(allowed.map((store) => {
+          const remote = found.get(store.id);
+          return {
+            storeId: store.id,
+            date,
+            pouletG: remote && !remote.error ? remote.pouletCruG : null,
+            viandeG: remote && !remote.error ? remote.viandeCruG : null,
+            error: remote ? remote.error : 'Ce restaurant n’est pas encore relié à La Caisse.',
+          };
+        }));
+      }
+      const saved = await allWeeks();
+      const snaps = await caisseDaysOn(allowed.map((store) => store.id), date);
+      const monday = mondayOf(new Date(`${date}T12:00:00`));
+      sendJson(res, 200, {
+        date,
+        stores: dailyRows(allowed, date, snaps, saved),
+        importedDates: await importedDates(allowed.map((store) => store.id), monday, dateOfDay(monday, 'dimanche')),
+      });
       return true;
     }
 

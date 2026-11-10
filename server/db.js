@@ -10,9 +10,13 @@ function secret() {
 
 async function load() {
   try {
-    return JSON.parse(await readFile(file, 'utf8'));
+    const db = JSON.parse(await readFile(file, 'utf8'));
+    db.users ||= [];
+    db.weeks ||= {};
+    db.caisseDays ||= {};
+    return db;
   } catch {
-    return { users: [], weeks: {} };
+    return { users: [], weeks: {}, caisseDays: {} };
   }
 }
 
@@ -129,6 +133,39 @@ export async function writeWeek(storeId, week, days) {
 export async function allWeeks() {
   const db = await load();
   return db.weeks;
+}
+
+export async function writeCaisseDays(entries) {
+  const db = await load();
+  const importedAt = new Date().toISOString();
+  for (const entry of entries) {
+    db.caisseDays[`${entry.storeId}|${entry.date}`] = {
+      pouletG: entry.pouletG,
+      viandeG: entry.viandeG,
+      error: entry.error || '',
+      importedAt,
+    };
+  }
+  await save(db);
+  return importedAt;
+}
+
+export async function caisseDaysOn(storeIds, date) {
+  const db = await load();
+  const out = {};
+  for (const id of storeIds) out[id] = db.caisseDays[`${id}|${date}`] || null;
+  return out;
+}
+
+export async function importedDates(storeIds, from, to) {
+  const db = await load();
+  const ids = new Set(storeIds.map(String));
+  const dates = new Set();
+  for (const key of Object.keys(db.caisseDays)) {
+    const [id, date] = key.split('|');
+    if (ids.has(id) && date >= from && date <= to && !db.caisseDays[key].error) dates.add(date);
+  }
+  return [...dates].sort();
 }
 
 export async function weeksForStore(storeId) {
